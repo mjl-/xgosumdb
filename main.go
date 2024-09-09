@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 
 	"golang.org/x/mod/module"
 	"golang.org/x/mod/sumdb/dirhash"
@@ -31,12 +32,13 @@ func xcheckf(err error, format string, args ...any) {
 
 func main() {
 	var addr string
-	var init string
+	var init, initkeys string
 	var dbpath string
 	var proxy string
 	var loglevel slog.LevelVar
 	flag.StringVar(&addr, "addr", "localhost:3080", "address to listen on")
-	flag.StringVar(&init, "init", "", "initialize new signer and database with given name (typically hostname, e.g. sumdb.example.com))")
+	flag.StringVar(&init, "init", "", "initialize new signer and database with given name (typically hostname, e.g. sumdb.example.com)")
+	flag.StringVar(&initkeys, "initkeys", "", "initialize database existing signer and verifier key, separated by space; make sure to clean any sumdb cache state when resetting a sum db with existing keys")
 	flag.StringVar(&dbpath, "db", "xgosum.db", "path to database")
 	flag.StringVar(&proxy, "proxy", "https://proxy.golang.org", "base url of go module proxy")
 	flag.TextVar(&loglevel, "loglevel", &loglevel, "for logging")
@@ -66,7 +68,12 @@ func main() {
 	var db *bstore.DB
 	var verifierKey string
 
-	if init != "" {
+	if init != "" || initkeys != "" {
+		if init != "" && initkeys != "" {
+			log.Printf("cannot have both -init and -initkeys")
+			flag.Usage()
+		}
+
 		// Check database doesn't already exist.
 		if _, err := os.Stat(dbpath); err == nil {
 			xcheckf(fmt.Errorf("already exists"), "creating database")
@@ -74,11 +81,35 @@ func main() {
 			xcheckf(err, "creating database")
 		}
 
-		// Generate a new key.
-		skey, vkey, err := note.GenerateKey(cryptorand.Reader, init)
-		xcheckf(err, "generating signer key")
+		var skey, vkey string
+		if initkeys != "" {
+			// todo: would be nicer to generate the vkey from the skey. wondering why package note doesn't have a method for that...
+			var ok bool
+			skey, vkey, ok = strings.Cut(initkeys, " ")
+			if !ok {
+				xcheckf(fmt.Errorf(`-initkeys must be "skey vkey"`), "parsing keys")
+			}
+			signer, err := note.NewSigner(skey)
+			xcheckf(err, "parsing initial signer key")
+			verifier, err := note.NewVerifier(vkey)
+			xcheckf(err, "parsing initial verifier key")
+			if signer.Name() != verifier.Name() {
+				log.Fatalf("name of signer %q and verifier %q don't match", signer.Name(), verifier.Name())
+			}
+			if signer.KeyHash() != verifier.KeyHash() {
+				log.Fatalf("key of signer and verifier don't match")
+			}
+		} else {
+			// Generate a new key.
+			var err error
+			skey, vkey, err = note.GenerateKey(cryptorand.Reader, init)
+			xcheckf(err, "generating signer key")
+
+			log.Printf("new signer key: %s", skey)
+		}
 
 		// New database.
+		var err error
 		db, err = bstore.Open(context.Background(), dbpath, nil, State{}, Record{}, Hash{})
 		xcheckf(err, "create db")
 
