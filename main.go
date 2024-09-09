@@ -137,6 +137,8 @@ func main() {
 		xcheckf(err, "initializing database")
 		verifierKey = state.VerifierKey
 	}
+	err := db.HintAppend(true, Record{}, Hash{})
+	xcheckf(err, "setting append-only hint for record and hash database types")
 
 	// Helpful for user.
 	fmt.Printf("use with:\n\n\tGOSUMDB='%s http://%s'\n\n", verifierKey, addr)
