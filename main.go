@@ -30,6 +30,8 @@ func xcheckf(err error, format string, args ...any) {
 	}
 }
 
+var signer note.Signer
+
 func main() {
 	var addr string
 	var init, initkeys string
@@ -89,8 +91,9 @@ func main() {
 			if !ok {
 				xcheckf(fmt.Errorf(`-initkeys must be "skey vkey"`), "parsing keys")
 			}
-			signer, err := note.NewSigner(skey)
+			ns, err := note.NewSigner(skey)
 			xcheckf(err, "parsing initial signer key")
+			signer = ns
 			verifier, err := note.NewVerifier(vkey)
 			xcheckf(err, "parsing initial verifier key")
 			if signer.Name() != verifier.Name() {
@@ -105,7 +108,11 @@ func main() {
 			skey, vkey, err = note.GenerateKey(cryptorand.Reader, init)
 			xcheckf(err, "generating signer key")
 
-			log.Printf("new signer key: %s", skey)
+			ns, err := note.NewSigner(skey)
+			xcheckf(err, "parsing initial signer key")
+			signer = ns
+
+			slog.Info("new signer key", "skey", skey)
 		}
 
 		// New database.
@@ -136,6 +143,10 @@ func main() {
 		err = db.Get(context.Background(), &state)
 		xcheckf(err, "initializing database")
 		verifierKey = state.VerifierKey
+
+		ns, err := note.NewSigner(state.SignerKey)
+		xcheckf(err, "parsing initial signer key")
+		signer = ns
 	}
 	err := db.HintAppend(true, Record{}, Hash{})
 	xcheckf(err, "setting append-only hint for record and hash database types")
@@ -149,8 +160,9 @@ func main() {
 		http.Handle(p, sumsrv)
 	}
 
-	log.Printf("listening on %s", addr)
-	http.ListenAndServe(addr, nil)
+	slog.Info("starting", "listenaddr", addr, "version", version)
+	err = http.ListenAndServe(addr, nil)
+	log.Fatalln("listen and serve:", err)
 }
 
 type State struct {
@@ -174,9 +186,9 @@ func db2tlogID(dbID int64) int64 {
 
 type Record struct {
 	ID      int64  // DB ID is 1 higher than tlog ID. Use tlog2dbID and db2tlogID.
-	Path    string `bstore:"index Path+Version"`
-	Version string
-	Data    []byte
+	Path    string `bstore:"nonzero,unique Path+Version"`
+	Version string `bstore:"nonzero"`
+	Data    []byte `bstore:"nonzero"`
 }
 
 type Hash struct {
@@ -193,10 +205,6 @@ func signTree(tx *bstore.Tx, state *State) (rerr error) {
 		return fmt.Errorf("calculating tree hash: %v", err)
 	}
 	text := tlog.FormatTree(tlog.Tree{N: state.Records, Hash: h})
-	signer, err := note.NewSigner(state.SignerKey)
-	if err != nil {
-		return fmt.Errorf("formatting new tree state: %v", err)
-	}
 	msg, err := note.Sign(&note.Note{Text: string(text)}, signer)
 	if err != nil {
 		return fmt.Errorf("signing new tree state: %v", err)
@@ -374,19 +382,14 @@ func (s *serverOps) Lookup(ctx context.Context, m module.Version) (int64, error)
 
 // ReadTileData reads the content of tile t.
 // It is only invoked for hash tiles (t.L ≥ 0).
-func (s *serverOps) ReadTileData(ctx context.Context, t tlog.Tile) ([]byte, error) {
+func (s *serverOps) ReadTileData(ctx context.Context, t tlog.Tile) (tileData []byte, rerr error) {
 	slog.Debug("read tile data", "tile", t)
 
-	tx, err := s.db.Begin(ctx, false)
-	if err != nil {
-		return nil, fmt.Errorf("begin tx: %v", err)
-	}
-	defer tx.Rollback()
-	tileData, err := tlog.ReadTileData(t, hashReader{tx})
-	if err != nil {
-		return nil, err
-	}
-	return tileData, nil
+	rerr = s.db.Read(ctx, func(tx *bstore.Tx) error {
+		tileData, rerr = tlog.ReadTileData(t, hashReader{tx})
+		return rerr
+	})
+	return tileData, rerr
 }
 
 type hashReader struct {
@@ -395,14 +398,14 @@ type hashReader struct {
 
 // ReadHashes returns the hashes with the given stored hash indexes.
 func (r hashReader) ReadHashes(indexes []int64) ([]tlog.Hash, error) {
-	var l []tlog.Hash
 	slog.Debug("hashreader readhashes", "indexes", indexes)
-	for _, id := range indexes {
+	l := make([]tlog.Hash, len(indexes))
+	for i, id := range indexes {
 		h := Hash{ID: tlog2dbID(id)}
 		if err := r.tx.Get(&h); err != nil {
 			return nil, err
 		}
-		l = append(l, h.Hash)
+		l[i] = h.Hash
 	}
 	return l, nil
 }

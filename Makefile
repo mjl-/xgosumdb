@@ -8,6 +8,9 @@ build:
 	CGO_ENABLED=0 go build
 	CGO_ENABLED=0 go vet
 
+check:
+	CGO_ENABLED=0 staticcheck
+
 clean:
 	CGO_ENABLED=0 go clean
 
