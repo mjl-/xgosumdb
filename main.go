@@ -33,11 +33,13 @@ func xcheckf(err error, format string, args ...any) {
 var signer note.Signer
 
 func main() {
+	var manualadd bool
 	var addr string
 	var init, initkeys string
 	var dbpath string
 	var proxy string
 	var loglevel slog.LevelVar
+	flag.BoolVar(&manualadd, "manualadd", false, "read a record consisting of two lines (for zip and go.mod contents) from stdin and add to the database (without verification of content hashes!)")
 	flag.StringVar(&addr, "addr", "localhost:3080", "address to listen on")
 	flag.StringVar(&init, "init", "", "initialize new signer and database with given name (typically hostname, e.g. sumdb.example.com)")
 	flag.StringVar(&initkeys, "initkeys", "", "initialize database existing signer and verifier key, separated by space; make sure to clean any sumdb cache state when resetting a sum db with existing keys")
@@ -150,6 +152,37 @@ func main() {
 	}
 	err := db.HintAppend(true, Record{}, Hash{})
 	xcheckf(err, "setting append-only hint for record and hash database types")
+
+	if manualadd {
+		/*
+			golang.org/toolchain v0.0.1-go1.22.1.linux-amd64 h1:zhaB0xtf1n7RI8+VTlFAxhfXYrkUUHHjr4cpEh+aEsA=
+			golang.org/toolchain v0.0.1-go1.22.1.linux-amd64/go.mod h1:8wlg68NqwW7eMnI1aABk/C2pDYXj8mrMY4TyRfiLeS0=
+		*/
+
+		slog.Info("reading record from stdin")
+		data, err := io.ReadAll(os.Stdin)
+		xcheckf(err, "reading record from stdin")
+
+		lines := strings.Split(string(data), "\n")
+		if len(lines) != 3 || lines[2] != "" {
+			log.Fatalf("need 2 lines")
+		}
+		t := strings.Split(lines[0], " ")
+		if len(t) != 3 {
+			log.Fatalf("first line %q, expected 3 space-separated tokens (path, version, hash)", lines[0])
+		}
+		path := t[0]
+		version := strings.TrimSuffix(t[1], "/go.mod")
+
+		err = db.Write(context.Background(), func(tx *bstore.Tx) error {
+			_, err := addRecord(tx, path, version, data)
+			return err
+		})
+		xcheckf(err, "inserting record into database")
+		slog.Info("module path/version added", "path", path, "version", version)
+
+		os.Exit(0)
+	}
 
 	// Helpful for user.
 	fmt.Printf("use with:\n\n\tGOSUMDB='%s http://%s'\n\n", verifierKey, addr)
@@ -335,49 +368,53 @@ func (s *serverOps) Lookup(ctx context.Context, m module.Version) (int64, error)
 			return err
 		}
 
-		state := State{ID: 1}
-		if err := tx.Get(&state); err != nil {
-			return fmt.Errorf("get state: %v", err)
-		}
-
-		// Insert new record into database.
-		record = Record{tlog2dbID(state.Records), m.Path, m.Version, data}
-		if err := tx.Insert(&record); err != nil {
-			return fmt.Errorf("inserting record: %v", err)
-		}
-		state.Records++
-		slog.Debug("inserting record into sumdb", "module", m, "recordtlogid", db2tlogID(record.ID))
-
-		// Insert one or more hashes.
-		if hashIndex := tlog.StoredHashIndex(0, db2tlogID(record.ID)); hashIndex != state.Hashes {
-			return fmt.Errorf("tlog says we should store hashes at offset %d for tlog record %d, we are at offset %d", hashIndex, db2tlogID(record.ID), state.Hashes)
-		}
-		hl, err := tlog.StoredHashes(db2tlogID(record.ID), data, hashReader{tx})
-		if err != nil {
-			return fmt.Errorf("calculating hashes to insert: %v", err)
-		}
-		slog.Debug("inserting hashes", "nhashes", len(hl))
-		for _, h := range hl {
-			nh := Hash{ID: tlog2dbID(state.Hashes), Hash: h}
-			if err := tx.Insert(&nh); err != nil {
-				return fmt.Errorf("inserting hash: %v", err)
-			}
-			state.Hashes++
-		}
-
-		// Sign and save new tree state.
-		if err := signTree(tx, &state); err != nil {
-			return fmt.Errorf("signing tree after adding record and hashes: %v", err)
-		}
-
-		r = record
-		return nil
+		r, err = addRecord(tx, m.Path, m.Version, data)
+		return err
 	})
 	if err != nil {
 		slog.Error("adding record to database", "module", m, "err", err)
 		return 0, err
 	}
 	return db2tlogID(r.ID), nil
+}
+
+func addRecord(tx *bstore.Tx, path, version string, data []byte) (Record, error) {
+	state := State{ID: 1}
+	if err := tx.Get(&state); err != nil {
+		return Record{}, fmt.Errorf("get state: %v", err)
+	}
+
+	// Insert new record into database.
+	record := Record{tlog2dbID(state.Records), path, version, data}
+	if err := tx.Insert(&record); err != nil {
+		return Record{}, fmt.Errorf("inserting record: %v", err)
+	}
+	state.Records++
+	slog.Debug("inserting record into sumdb", "path", path, "version", version, "recordtlogid", db2tlogID(record.ID))
+
+	// Insert one or more hashes.
+	if hashIndex := tlog.StoredHashIndex(0, db2tlogID(record.ID)); hashIndex != state.Hashes {
+		return Record{}, fmt.Errorf("tlog says we should store hashes at offset %d for tlog record %d, we are at offset %d", hashIndex, db2tlogID(record.ID), state.Hashes)
+	}
+	hl, err := tlog.StoredHashes(db2tlogID(record.ID), data, hashReader{tx})
+	if err != nil {
+		return Record{}, fmt.Errorf("calculating hashes to insert: %v", err)
+	}
+	slog.Debug("inserting hashes", "nhashes", len(hl))
+	for _, h := range hl {
+		nh := Hash{ID: tlog2dbID(state.Hashes), Hash: h}
+		if err := tx.Insert(&nh); err != nil {
+			return Record{}, fmt.Errorf("inserting hash: %v", err)
+		}
+		state.Hashes++
+	}
+
+	// Sign and save new tree state.
+	if err := signTree(tx, &state); err != nil {
+		return Record{}, fmt.Errorf("signing tree after adding record and hashes: %v", err)
+	}
+
+	return record, nil
 }
 
 // ReadTileData reads the content of tile t.
