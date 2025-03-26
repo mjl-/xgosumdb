@@ -1,5 +1,5 @@
-# github.com/mjl-/bstore v0.0.6
-## explicit; go 1.19
+# github.com/mjl-/bstore v0.0.8
+## explicit; go 1.22
 github.com/mjl-/bstore
 # go.etcd.io/bbolt v1.3.11
 ## explicit; go 1.22
