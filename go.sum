@@ -1,13 +1,13 @@
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/mjl-/bstore v0.0.8 h1:9pojrmRTJZZOx9yAUbldq6CZCBuRbwNtk+N+SRCEUVk=
-github.com/mjl-/bstore v0.0.8/go.mod h1:92/K8lyfA4z5W0P9O0TqCenNnC76p2YFdWJSZChzBkk=
+github.com/mjl-/bstore v0.0.10 h1:fYLQy3EdgXvRHoa8Q3sXMAjZf+uQLRbsh9rYjGep/t4=
+github.com/mjl-/bstore v0.0.10/go.mod h1:QzqlAZAVRKwyojCRd9v25viFsMxK5UmIbdxgEyHdK6c=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stretchr/testify v1.8.1 h1:w7B6lhMri9wdJUVmEZPGGhZzrYTPvgJArz7wNPgYKsk=
 github.com/stretchr/testify v1.8.1/go.mod h1:w2LPCIKwWwSfY2zedu0+kehJoqGctiVI29o6fzry7u4=
-go.etcd.io/bbolt v1.3.11 h1:yGEzV1wPz2yVCLsD8ZAiGHhHVlczyC9d1rP43/VCRJ0=
-go.etcd.io/bbolt v1.3.11/go.mod h1:dksAq7YMXoljX0xu6VF5DMZGbhYYoLUalEiSySYAS4I=
+go.etcd.io/bbolt v1.3.12 h1:UAxZAIuJqzFwByP19gZC3zd5robK3FOangrGS+Fdczg=
+go.etcd.io/bbolt v1.3.12/go.mod h1:Gi2toLZr1jFkuReJm+yEPn7H8wk6ooptePtHYCbCS1g=
 golang.org/x/mod v0.21.0 h1:vvrHzRwRfVKSiLrG+d4FMl/Qi4ukBCE6kZlTUkDYRT0=
 golang.org/x/mod v0.21.0/go.mod h1:6SkKJ3Xj0I0BrPOZoBy3bdMptDDU9oJrpohJ3eWZ1fY=
 golang.org/x/sync v0.5.0 h1:60k92dhOjHxJkrqnwsfl8KuaHbn/5dl0lUPUklKo3qE=

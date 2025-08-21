@@ -3,11 +3,11 @@ module github.com/mjl-/xgosumdb
 go 1.23.0
 
 require (
-	github.com/mjl-/bstore v0.0.8
+	github.com/mjl-/bstore v0.0.10
 	golang.org/x/mod v0.21.0
 )
 
 require (
-	go.etcd.io/bbolt v1.3.11 // indirect
+	go.etcd.io/bbolt v1.3.12 // indirect
 	golang.org/x/sys v0.4.0 // indirect
 )

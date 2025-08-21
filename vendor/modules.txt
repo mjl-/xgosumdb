@@ -1,8 +1,8 @@
-# github.com/mjl-/bstore v0.0.8
-## explicit; go 1.22
+# github.com/mjl-/bstore v0.0.10
+## explicit; go 1.23.0
 github.com/mjl-/bstore
-# go.etcd.io/bbolt v1.3.11
-## explicit; go 1.22
+# go.etcd.io/bbolt v1.3.12
+## explicit; go 1.23
 go.etcd.io/bbolt
 # golang.org/x/mod v0.21.0
 ## explicit; go 1.22.0
